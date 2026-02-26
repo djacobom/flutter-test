@@ -53,7 +53,7 @@ class MyHomePage extends StatelessWidget {
       return;
     }
 
-    var uri = Uri.parse('https://api.example.com/upload');
+    var uri = Uri.parse('https://dev-gastos-de-viaje-635303073550.us-east4.run.app/process-documents');
     var request = http.MultipartRequest('POST', uri);
 
     for (var file in files) {
