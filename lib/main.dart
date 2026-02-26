@@ -24,7 +24,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Multi-File Uploader',
+      title: 'Registro de Gastos de Viaje',
       theme: ThemeData(
         primarySwatch: Colors.purple,
         scaffoldBackgroundColor: Colors.white,
@@ -44,8 +44,15 @@ class MyApp extends StatelessWidget {
   }
 }
 
-class MyHomePage extends StatelessWidget {
+class MyHomePage extends StatefulWidget {
   const MyHomePage({super.key});
+
+  @override
+  State<MyHomePage> createState() => _MyHomePageState();
+}
+
+class _MyHomePageState extends State<MyHomePage> {
+  bool _isUploading = false;
 
   MediaType _getMediaType(String filePath) {
     final extension = filePath.toLowerCase().split('.').last;
@@ -76,6 +83,10 @@ class MyHomePage extends StatelessWidget {
       return;
     }
 
+    setState(() {
+      _isUploading = true;
+    });
+
     var uri = Uri.parse('https://dev-gastos-de-viaje-635303073550.us-east4.run.app/process-documents');
     var request = http.MultipartRequest('POST', uri);
 
@@ -95,6 +106,10 @@ class MyHomePage extends StatelessWidget {
       final respStr = await response.stream.bytesToString();
       // Log the response content
       debugPrint('Upload response: $respStr');
+
+      setState(() {
+        _isUploading = false;
+      });
 
       if (context.mounted) {
         Provider.of<FileProvider>(context, listen: false).clearFiles();
@@ -119,52 +134,70 @@ class MyHomePage extends StatelessWidget {
         }
       }
     } catch (e) {
+      setState(() {
+        _isUploading = false;
+      });
+
       if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('An error occurred: $e')),
-      );
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('An error occurred: $e')),
+        );
       }
     }
-    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final fileProvider = Provider.of<FileProvider>(context);
     final filePickerService = FilePickerService();
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Multi-File Uploader'),
-      ),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+    return Stack(
+      children: [
+        Scaffold(
+          appBar: AppBar(
+            title: const Text('Registro de Gastos de Viaje'),
+          ),
+          body: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
               children: [
-                ElevatedButton.icon(
-                  onPressed: () async {
-                    var files = await filePickerService.pickFiles();
-                    if (files.isNotEmpty) {
-                      fileProvider.addFiles(files);
-                    }
-                  },
-                  icon: const Icon(Icons.file_copy),
-                  label: const Text('Select Files'),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  alignment: WrapAlignment.center,
+                  children: [
+                    ElevatedButton.icon(
+                      onPressed: _isUploading ? null : () async {
+                        var files = await filePickerService.pickFiles();
+                        if (files.isNotEmpty) {
+                          fileProvider.addFiles(files);
+                        }
+                      },
+                      icon: const Icon(Icons.file_copy),
+                      label: const Text('Archivos'),
+                    ),
+                    ElevatedButton.icon(
+                      onPressed: _isUploading ? null : () async {
+                        var file = await filePickerService.pickImageFromCamera();
+                        if (file != null) {
+                          fileProvider.addFile(file);
+                        }
+                      },
+                      icon: const Icon(Icons.camera_alt),
+                      label: const Text('Cámara'),
+                    ),
+                    ElevatedButton.icon(
+                      onPressed: _isUploading ? null : () async {
+                        var file = await filePickerService.pickImageFromGallery();
+                        if (file != null) {
+                          fileProvider.addFile(file);
+                        }
+                      },
+                      icon: const Icon(Icons.photo_library),
+                      label: const Text('Galería'),
+                    ),
+                  ],
                 ),
-                ElevatedButton.icon(
-                  onPressed: () async {
-                    var file = await filePickerService.pickImageFromCamera();
-                    if (file != null) {
-                      fileProvider.addFile(file);
-                    }
-                  },
-                  icon: const Icon(Icons.camera_alt),
-                  label: const Text('Capture Photo'),
-                ),
-              ],
-            ),
             const SizedBox(height: 20),
             Expanded(
               child: GridView.builder(
@@ -229,14 +262,60 @@ class MyHomePage extends StatelessWidget {
             SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
-                onPressed: () => _uploadFiles(context, fileProvider.files),
-                icon: const Icon(Icons.cloud_upload),
-                label: const Text('Upload Files'),
+                onPressed: _isUploading ? null : () => _uploadFiles(context, fileProvider.files),
+                icon: _isUploading
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                        ),
+                      )
+                    : const Icon(Icons.cloud_upload),
+                label: Text(_isUploading ? 'Procesando...' : 'Mandar archivos'),
               ),
             ),
           ],
         ),
       ),
+    ),
+        if (_isUploading)
+          Container(
+            color: Colors.black54,
+            child: Center(
+              child: Card(
+                margin: const EdgeInsets.all(32),
+                child: Padding(
+                  padding: const EdgeInsets.all(32.0),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const CircularProgressIndicator(),
+                      const SizedBox(height: 24),
+                      const Text(
+                        'Procesando archivos...',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Por favor, espere mientras analizamos sus documentos',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Colors.grey.shade600,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }
