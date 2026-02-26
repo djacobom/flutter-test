@@ -3,9 +3,11 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
 import 'package:provider/provider.dart';
 import 'file_provider.dart';
 import 'file_picker_service.dart';
+import 'upload_result_page.dart';
 
 void main() {
   runApp(
@@ -45,6 +47,27 @@ class MyApp extends StatelessWidget {
 class MyHomePage extends StatelessWidget {
   const MyHomePage({super.key});
 
+  MediaType _getMediaType(String filePath) {
+    final extension = filePath.toLowerCase().split('.').last;
+    switch (extension) {
+      case 'pdf':
+        return MediaType('application', 'pdf');
+      case 'jpg':
+      case 'jpeg':
+        return MediaType('image', 'jpeg');
+      case 'png':
+        return MediaType('image', 'png');
+      case 'gif':
+        return MediaType('image', 'gif');
+      case 'xml':
+        return MediaType('application', 'xml');
+      case 'txt':
+        return MediaType('text', 'plain');
+      default:
+        return MediaType('application', 'octet-stream');
+    }
+  }
+
   Future<void> _uploadFiles(BuildContext context, List<File> files) async {
     if (files.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -61,6 +84,7 @@ class MyHomePage extends StatelessWidget {
         await http.MultipartFile.fromPath(
           'files',
           file.path,
+          contentType: _getMediaType(file.path),
         ),
       );
     }
@@ -68,24 +92,40 @@ class MyHomePage extends StatelessWidget {
     try {
       var response = await request.send();
 
-      if (response.statusCode == 200) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Files uploaded successfully!')),
-        );
+      final respStr = await response.stream.bytesToString();
+      // Log the response content
+      debugPrint('Upload response: $respStr');
+
+      if (context.mounted) {
         Provider.of<FileProvider>(context, listen: false).clearFiles();
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Upload failed with status: ${response.statusCode}'),
+
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => UploadResultPage(jsonResponse: respStr),
           ),
         );
+
+        if (response.statusCode == 200) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Files uploaded successfully!')),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Upload completed with status: ${response.statusCode}'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
       }
     } catch (e) {
+      if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('An error occurred: $e')),
       );
+      }
     }
-  }
+    }
 
   @override
   Widget build(BuildContext context) {
