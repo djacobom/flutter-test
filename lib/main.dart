@@ -1,5 +1,6 @@
 
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
@@ -91,13 +92,33 @@ class _MyHomePageState extends State<MyHomePage> {
     var request = http.MultipartRequest('POST', uri);
 
     for (var file in files) {
-      request.files.add(
-        await http.MultipartFile.fromPath(
-          'files',
-          file.path,
-          contentType: _getMediaType(file.path),
-        ),
-      );
+      if (kIsWeb) {
+        // On web, use bytes from stored PlatformFile
+        final fileName = file.path; // This is actually the filename on web
+        final platformFile = FilePickerService.webPlatformFiles[fileName];
+
+        if (platformFile != null && platformFile.bytes != null) {
+          request.files.add(
+            http.MultipartFile.fromBytes(
+              'files',
+              platformFile.bytes!,
+              filename: platformFile.name,
+              contentType: _getMediaType(platformFile.name),
+            ),
+          );
+          debugPrint('Added web file: ${platformFile.name}');
+        }
+      } else {
+        // On mobile, use file path
+        request.files.add(
+          await http.MultipartFile.fromPath(
+            'files',
+            file.path,
+            contentType: _getMediaType(file.path),
+          ),
+        );
+        debugPrint('Added mobile file: ${file.path}');
+      }
     }
 
     try {
@@ -113,6 +134,11 @@ class _MyHomePageState extends State<MyHomePage> {
 
       if (context.mounted) {
         Provider.of<FileProvider>(context, listen: false).clearFiles();
+
+        // Clear web platform files after upload
+        if (kIsWeb) {
+          FilePickerService.webPlatformFiles.clear();
+        }
 
         Navigator.of(context).push(
           MaterialPageRoute(
@@ -169,33 +195,40 @@ class _MyHomePageState extends State<MyHomePage> {
                     ElevatedButton.icon(
                       onPressed: _isUploading ? null : () async {
                         var files = await filePickerService.pickFiles();
+                        debugPrint('Files picked: ${files.length}');
                         if (files.isNotEmpty) {
                           fileProvider.addFiles(files);
+                        } else {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('No se seleccionaron archivos')),
+                          );
                         }
                       },
                       icon: const Icon(Icons.file_copy),
                       label: const Text('Archivos'),
                     ),
-                    ElevatedButton.icon(
-                      onPressed: _isUploading ? null : () async {
-                        var file = await filePickerService.pickImageFromCamera();
-                        if (file != null) {
-                          fileProvider.addFile(file);
-                        }
-                      },
-                      icon: const Icon(Icons.camera_alt),
-                      label: const Text('Cámara'),
-                    ),
-                    ElevatedButton.icon(
-                      onPressed: _isUploading ? null : () async {
-                        var file = await filePickerService.pickImageFromGallery();
-                        if (file != null) {
-                          fileProvider.addFile(file);
-                        }
-                      },
-                      icon: const Icon(Icons.photo_library),
-                      label: const Text('Galería'),
-                    ),
+                    if (!kIsWeb) ...[
+                      ElevatedButton.icon(
+                        onPressed: _isUploading ? null : () async {
+                          var file = await filePickerService.pickImageFromCamera();
+                          if (file != null) {
+                            fileProvider.addFile(file);
+                          }
+                        },
+                        icon: const Icon(Icons.camera_alt),
+                        label: const Text('Cámara'),
+                      ),
+                      ElevatedButton.icon(
+                        onPressed: _isUploading ? null : () async {
+                          var file = await filePickerService.pickImageFromGallery();
+                          if (file != null) {
+                            fileProvider.addFile(file);
+                          }
+                        },
+                        icon: const Icon(Icons.photo_library),
+                        label: const Text('Galería'),
+                      ),
+                    ],
                   ],
                 ),
             const SizedBox(height: 20),
@@ -209,12 +242,25 @@ class _MyHomePageState extends State<MyHomePage> {
                 itemCount: fileProvider.files.length,
                 itemBuilder: (context, index) {
                   File file = fileProvider.files[index];
-                  bool isImage = ['.jpg', '.jpeg', '.png'].any((ext) => file.path.toLowerCase().endsWith(ext));
+                  final fileName = kIsWeb ? file.path : file.path.split('/').last;
+                  bool isImage = ['.jpg', '.jpeg', '.png'].any((ext) => fileName.toLowerCase().endsWith(ext));
 
                   return Stack(
                     children: [
                       isImage
-                          ? Image.file(file, fit: BoxFit.cover, width: double.infinity, height: double.infinity)
+                          ? kIsWeb && FilePickerService.webPlatformFiles.containsKey(file.path)
+                              ? Image.memory(
+                                  FilePickerService.webPlatformFiles[file.path]!.bytes!,
+                                  fit: BoxFit.cover,
+                                  width: double.infinity,
+                                  height: double.infinity,
+                                )
+                              : Image.file(
+                                  file,
+                                  fit: BoxFit.cover,
+                                  width: double.infinity,
+                                  height: double.infinity,
+                                )
                           : Container(
                               alignment: Alignment.center,
                               color: Colors.grey[200],
@@ -225,7 +271,7 @@ class _MyHomePageState extends State<MyHomePage> {
                                   Padding(
                                     padding: const EdgeInsets.all(4.0),
                                     child: Text(
-                                      file.path.split('/').last,
+                                      fileName,
                                       textAlign: TextAlign.center,
                                       overflow: TextOverflow.ellipsis,
                                     ),
